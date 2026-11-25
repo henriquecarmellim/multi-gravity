@@ -33,7 +33,13 @@ uma e troque de conta por um TUI. O comando é **`mgy`**.
 
 Precisa do `agy` instalado. Para compilar, precisa também do [Go](https://go.dev/dl/).
 
-**Linux e macOS**
+**Linux e macOS, sem clonar** (baixa o binário da última release):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/henriquecarmellim/multi-gravity/main/install.sh | bash
+```
+
+**Linux e macOS, a partir do código:**
 
 ```bash
 git clone https://github.com/henriquecarmellim/multi-gravity.git
@@ -41,7 +47,13 @@ cd multi-gravity
 ./install.sh              # instala em ~/.local/bin (use --prefix DIR para outro lugar)
 ```
 
-**Windows (PowerShell)**
+**Windows (PowerShell), sem clonar** *(o caminho do Windows só foi validado pelo CI, não numa máquina real)*:
+
+```powershell
+irm https://raw.githubusercontent.com/henriquecarmellim/multi-gravity/main/install.ps1 | iex
+```
+
+**Windows, a partir do código:**
 
 ```powershell
 git clone https://github.com/henriquecarmellim/multi-gravity.git
