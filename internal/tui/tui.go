@@ -56,19 +56,20 @@ type (
 )
 
 type model struct {
-	m      *core.Mgr
-	accts  []string
-	quotas map[string]core.Quota
-	active string
-	cur    int
-	w, h   int
-	st     state
-	busy   string
-	spin   spinner.Model
-	note   string
-	noteOK bool
-	launch string
-	sess   *core.AddSession
+	m       *core.Mgr
+	accts   []string
+	quotas  map[string]core.Quota
+	active  string
+	cur     int
+	w, h    int
+	st      state
+	busy    string
+	loading bool // lendo a cota da conta ativa em segundo plano
+	spin    spinner.Model
+	note    string
+	noteOK  bool
+	launch  string
+	sess    *core.AddSession
 }
 
 // Run abre o TUI. Devolve a conta escolhida para abrir no agy ("" se saiu sem escolher).
@@ -84,7 +85,7 @@ func newModel(m *core.Mgr) model {
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	sp.Style = sKey
-	md := model{m: m, spin: sp, w: 100, h: 30}
+	md := model{m: m, spin: sp, w: 100, h: 30, loading: m.StaleActive()}
 	md.reload()
 	for i, e := range md.accts { // começa em cima da conta ativa
 		if e == md.active {
@@ -117,6 +118,9 @@ func (md model) selected() string {
 }
 
 func (md model) Init() tea.Cmd {
+	if !md.loading {
+		return nil
+	}
 	return tea.Batch(md.spin.Tick, func() tea.Msg {
 		return refreshedMsg{err: md.m.RefreshActive()}
 	})
@@ -134,7 +138,7 @@ func (md model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return md, c
 
 	case refreshedMsg:
-		md.busy = ""
+		md.busy, md.loading = "", false
 		md.reload()
 		switch {
 		case msg.err != nil:
@@ -208,6 +212,11 @@ func (md model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return md, nil
 	}
 
+	// enquanto o agy lê a cota da conta ativa, ele aparece como "agy aberto":
+	// só mover e sair; trocar/adicionar/remover/atualizar esperam terminar.
+	if md.loading && (s == "enter" || s == "a" || s == "x" || s == "delete" || s == "r") {
+		return md, nil
+	}
 	md.note = ""
 	switch s {
 	case "q", "esc", "ctrl+c":
@@ -369,6 +378,8 @@ func (md model) View() string {
 	switch {
 	case md.busy != "":
 		b.WriteString(" " + md.spin.View() + " " + sWarn.Render(md.busy) + "\n")
+	case md.loading:
+		b.WriteString(" " + md.spin.View() + " " + sWarn.Render("lendo a cota da conta ativa…") + "\n")
 	case md.st == stRmConfirm:
 		b.WriteString(" " + sWarn.Render("remover "+md.selected()+" do mgy?") + sDim.Render(" (o login só é esquecido aqui) ") + sKey.Render("s") + sDim.Render("/n") + "\n")
 	case md.note != "":

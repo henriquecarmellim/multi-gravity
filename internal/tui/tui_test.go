@@ -51,7 +51,7 @@ func press(md tea.Model, keys ...string) tea.Model {
 }
 
 func TestViewMostraContasECotas(t *testing.T) {
-	var md tea.Model = newModel(setup(t))
+	var md tea.Model = fresh(setup(t))
 	md, _ = md.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
 	v := md.View()
 	for _, want := range []string{"a@teste.com", "b@teste.com", "6%", "100%", "0%", "desativado", "multi-gravity", "2 conta(s)"} {
@@ -67,14 +67,14 @@ func TestViewMostraContasECotas(t *testing.T) {
 
 func TestEnterNaContaAtivaAbreOAgy(t *testing.T) {
 	m := setup(t) // a conta ativa é a última registrada: b@
-	md := press(newModel(m), "enter").(model)
+	md := press(fresh(m), "enter").(model)
 	if md.launch != "b@teste.com" {
 		t.Errorf("launch = %q, queria b@teste.com", md.launch)
 	}
 }
 
 func TestAdicionarMostraInstrucoesEEscVolta(t *testing.T) {
-	md := press(newModel(setup(t)), "a")
+	md := press(fresh(setup(t)), "a")
 	if v := md.View(); !strings.Contains(v, "Adicionar conta") || !strings.Contains(v, "/exit") {
 		t.Errorf("faltam as instruções:\n%s", v)
 	}
@@ -86,7 +86,7 @@ func TestAdicionarMostraInstrucoesEEscVolta(t *testing.T) {
 
 func TestRemoverPedeConfirmacao(t *testing.T) {
 	m := setup(t)
-	md := press(newModel(m), "x", "n") // cancela
+	md := press(fresh(m), "x", "n") // cancela
 	if len(m.Accounts()) != 2 {
 		t.Fatal("cancelar não pode remover")
 	}
@@ -106,4 +106,36 @@ func TestSemContasConvidaAAdicionar(t *testing.T) {
 	if v := newModel(m).View(); !strings.Contains(v, "nenhuma conta ainda") {
 		t.Errorf("estado vazio:\n%s", v)
 	}
+}
+
+func TestEnquantoLeAContaAtivaNaoTrocaNemAdiciona(t *testing.T) {
+	m := setup(t)
+	md := newModel(m)
+	md.loading = true // simula a leitura de cota em segundo plano
+	md.cur = 0        // a@ (a ativa é b@)
+	out := press(md, "enter", "a", "x", "r").(model)
+	if out.launch != "" || out.st != stList || out.busy != "" || out.note != "" {
+		t.Errorf("deveria ignorar as ações enquanto carrega: %+v", out)
+	}
+	if v := out.View(); !strings.Contains(v, "lendo a cota") {
+		t.Errorf("deveria mostrar que está lendo a cota:\n%s", v)
+	}
+	// mover e sair continuam funcionando
+	out = press(out, "down").(model)
+	if out.cur != 1 {
+		t.Errorf("mover deveria funcionar, cur=%d", out.cur)
+	}
+	// ao terminar, libera
+	var next tea.Model
+	next, _ = out.Update(refreshedMsg{})
+	if next.(model).loading {
+		t.Error("refreshedMsg deveria liberar")
+	}
+}
+
+// fresh é um modelo sem a leitura de cota em segundo plano pendente.
+func fresh(m *core.Mgr) model {
+	md := newModel(m)
+	md.loading = false
+	return md
 }

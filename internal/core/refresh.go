@@ -35,7 +35,7 @@ func (m *Mgr) RefreshAll() (warns []string, err error) {
 		}
 	}
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	done := make(chan struct{})
 	defer func() { signal.Stop(sig); close(done) }()
 	go func() {

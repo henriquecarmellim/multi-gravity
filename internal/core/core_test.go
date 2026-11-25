@@ -242,3 +242,22 @@ func TestRemove(t *testing.T) {
 		t.Error("remover não pode mexer no login ativo do agy")
 	}
 }
+
+func TestTrocaRespeitaOLock(t *testing.T) {
+	m := setup(t)
+	login(t, m, "a@teste.com")
+	m.RegisterLive()
+	login(t, m, "b@teste.com")
+	m.RegisterLive()
+	un, err := m.Lock() // como um `mgy quota` em outro terminal
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer un()
+	if err := m.SwitchTo("a@teste.com"); err == nil {
+		t.Fatal("deveria recusar enquanto outra instância segura o lock")
+	}
+	if m.ActiveEmail() != "b@teste.com" {
+		t.Error("o login não pode ter mudado")
+	}
+}

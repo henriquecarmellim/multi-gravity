@@ -213,6 +213,11 @@ func (m *Mgr) SwitchTo(email string) error {
 	if m.ActiveEmail() == email {
 		return nil
 	}
+	unlock, err := m.Lock() // evita brigar com um `mgy quota` rodando em outro terminal
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := m.CanSwap(); err != nil {
 		return err
 	}
@@ -376,14 +381,20 @@ func (m *Mgr) FetchQuota(email string) error {
 	return os.Rename(name, m.quotaFile(email))
 }
 
-// RefreshActive atualiza só a conta ativa, se o cache tiver mais de 5 minutos.
-func (m *Mgr) RefreshActive() error {
+// StaleActive diz se a cota da conta ativa precisa ser lida (cache com mais de 5 minutos).
+func (m *Mgr) StaleActive() bool {
 	e := m.ActiveEmail()
 	if e == "" {
+		return false
+	}
+	q := m.LoadQuota(e)
+	return q.At.IsZero() || time.Since(q.At) >= 5*time.Minute
+}
+
+// RefreshActive atualiza só a conta ativa, se o cache estiver velho.
+func (m *Mgr) RefreshActive() error {
+	if !m.StaleActive() {
 		return nil
 	}
-	if q := m.LoadQuota(e); !q.At.IsZero() && time.Since(q.At) < 5*time.Minute {
-		return nil
-	}
-	return m.FetchQuota(e)
+	return m.FetchQuota(m.ActiveEmail())
 }

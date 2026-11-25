@@ -116,6 +116,16 @@ atualizada quando você aperta `r` (ou roda `mgy quota`). A conta ativa é lida 
 ⚠️ No Windows o caminho do login foi assumido igual ao do Linux e **não foi verificado**. Se o seu for outro,
 defina `MGY_LIVE` com o caminho certo.
 
+### ⚠️ Limitação: cofre de senhas do sistema
+
+O `agy` tenta ler o login primeiro do **cofre de senhas do sistema** (Secret Service no Linux, Keychain no macOS,
+Credential Manager no Windows) e só depois do arquivo. O mgy troca **o arquivo**. Onde o `agy` guarda o login
+no cofre em vez do arquivo, a troca não terá efeito, e o mgy mostrará "nenhum login" ou contas erradas.
+
+Foi testado num Linux sem cofre ativo, onde o `agy` usa o arquivo (e, sem ele, fica deslogado e pede login). Em macOS
+e Windows isso **não foi verificado**. Se o mgy não trocar a conta no seu sistema, abra uma issue com a saída de
+`mgy ls` e o sistema que você usa.
+
 ### Variáveis de ambiente
 
 | Variável | Para quê |
@@ -157,8 +167,6 @@ O código fica em `internal/core` (contas, troca de login e cota) e `internal/tu
 [Bubble Tea](https://github.com/charmbracelet/bubbletea)). Os testes usam um `agy` de mentira e pastas
 temporárias: nunca tocam no seu login real. Para publicar uma versão: `git tag v0.1.0 && git push --tags`
 (o workflow de release gera os binários).
-
-A primeira versão do projeto, em Bash + fzf, está em `legacy/mgy.bash` só como referência (só Linux).
 
 ## Aviso
 
