@@ -6,23 +6,25 @@ uma e troque de conta por um TUI. O comando é **`mgy`**.
 ```
  ◆ multi-gravity  contas do agy                                                                                  3 conta(s)
 
-                       Gemini 5h            Gemini sem           Claude/GPT 5h        Claude/GPT sem
- ▶ ● ana@exemplo.com    ████████ 100% ↻13:58  █████░░░  64% ↻29/11  desativado           ██████░░  80% ↻11:58
-   ○ bruno@exemplo.com  ████████ 100% ↻13:58  ░░░░░░░░   6% ↻29/11  desativado           ░░░░░░░░   0% ↻11:58
-   ○ carla@exemplo.com  ███░░░░░  35% ↻13:58  ███████░  92% ↻29/11  desativado           ██████░░  71% ↻11:58
+                          Gemini 5h            Gemini sem           Claude/GPT 5h        Claude/GPT sem
+ ▶ ● ★ ana@exemplo.com    ████████ 100% ↻13:58  █████░░░  64% ↻29/11  desativado           ██████░░  80% ↻11:58
+   ○ 2 carla@exemplo.com  ███░░░░░  35% ↻13:58  ███████░  92% ↻29/11  desativado           ██████░░  71% ↻11:58
+   ○ 3 bruno@exemplo.com  ████████ 100% ↻13:58  ░░░░░░░░   6% ↻29/11  desativado           ░░░░░░░░   0% ↻11:58
 
   ╭────────────────────────────────────────────────────────╮
-  │ ana@exemplo.com  (ativa no agy)   cota lida agora      │
+  │ ana@exemplo.com  (ativa no agy)   cota lida há 30min   │
   │ Gemini 5h       ████████████ 100%   renova 25/11 13:58 │
   │ Gemini sem      ████████░░░░  64%   renova 29/11 10:58 │
   │ Claude/GPT 5h   desativado                             │
   │ Claude/GPT sem  ██████████░░  80%   renova 25/11 11:58 │
   ╰────────────────────────────────────────────────────────╯
- ↑↓ mover  ·  ↵ trocar e abrir o agy  ·  a adicionar  ·  x remover  ·  r atualizar cotas  ·  q sair
+ ↑↓ mover  ·  ↵ trocar e abrir o agy  ·  b melhor conta  ·  a adicionar  ·  x remover  ·  r cotas  ·  c opções  ·  q sair
 ```
 
 *(exemplo com contas fictícias)*
 
+- **A melhor conta primeiro:** as contas ficam ordenadas pela cota que sobra, e a **★** marca a que vale usar agora (`b` no TUI ou `mgy auto`).
+- **O contexto acompanha a troca de conta:** o `agy` abre com `--continue`, e a conversa segue de onde parou, mesmo em outra conta.
 - **Todas as cotas de uma vez:** Gemini e Claude/GPT, janela de 5 horas e semanal, com barra e horário de renovação.
 - **Tudo pelo TUI:** trocar, adicionar, remover e atualizar as cotas, sem decorar comandos.
 - **Troca e já abre o `agy`:** `Enter` na conta escolhida e você cai direto no `agy` com ela.
@@ -78,9 +80,11 @@ Digite **`mgy`**. Pronto, o TUI abre.
 |---|---|
 | `↑` `↓` ou `j` `k` | mover entre as contas |
 | `Enter` | trocar para a conta e abrir o `agy` |
+| `b` | trocar para a **melhor conta** (★) e abrir o `agy` |
 | `a` | adicionar uma conta |
 | `x` | remover a conta selecionada (pede confirmação) |
 | `r` | atualizar a cota de todas as contas |
+| `c` | opções (ordem, cota que pesa, continuar conversa, permissões) |
 | `q` ou `Esc` | sair |
 
 `●` marca a conta que está ativa no `agy` agora e `○` as demais. Valores baixos ficam em rosa (50% ou menos)
@@ -95,6 +99,29 @@ e em vermelho forte (10% ou menos). `↻` mostra quando a cota renova.
 
 Se você sair do `agy` sem fazer login, o login anterior é restaurado: nada se perde.
 
+### Melhor conta, contexto e opções
+
+**Melhor conta.** Com a ordem em "melhor cota primeiro" (o padrão), o `mgy` dá a cada conta uma nota de 0 a 100: a
+**menor** entre as janelas de 5h e semanal da família escolhida, porque a primeira que acabar trava a conta.
+Janela cujo horário de renovação já passou conta como 100% (a cota em cache é velha). A conta com a maior nota fica
+em primeiro lugar e ganha a **★**. Se todas estiverem zeradas, ou sem dados, não há "melhor": aperte `r`.
+
+**Contexto entre contas.** As conversas do `agy` ficam em arquivos locais (`~/.gemini/antigravity-cli/conversations`)
+e **não pertencem a uma conta**. Por isso, depois de trocar de conta, basta abrir o `agy` com `--continue`, e o `mgy`
+faz isso por você. Ele só não põe o `--continue` se você mesmo escolher a conversa (`-c`, `-r`, `--conversation`...).
+
+**Opções** (tecla `c`, ou `mgy config <chave> <valor>`; ficam em `config.json` na pasta do mgy):
+
+| Opção | Valores | O que faz |
+|---|---|---|
+| `strategy` | `best` (padrão) · `manual` | ordenar as contas pela cota, ou alfabeticamente |
+| `family` | `gemini` (padrão) · `claude` · `both` | qual cota pesa no "melhor": Gemini, Claude + GPT, ou a média das duas |
+| `continue` | `on` (padrão) · `off` | abrir o `agy` com `--continue` |
+| `skip-permissions` | `on` · `off` (padrão) | abrir o `agy` com `--dangerously-skip-permissions` |
+
+> ⚠️ `skip-permissions` faz o `agy` **aprovar tudo sozinho, sem perguntar**. Só ligue se você sabe o que isso significa.
+> Ele vem desligado e o TUI mostra **LIGADO** em vermelho quando está ativo.
+
 ### Sem o TUI
 
 Tudo também funciona por comando, bom para scripts:
@@ -103,10 +130,13 @@ Tudo também funciona por comando, bom para scripts:
 |---|---|
 | `mgy` | abre o TUI |
 | `mgy -- <args>` | abre o TUI e repassa `<args>` ao `agy` (ex.: `mgy -- -c` continua a última conversa) |
-| `mgy ls` | lista as contas e as cotas (do cache) |
+| `mgy auto [args]` | lê as cotas, escolhe a **melhor conta** e abre o `agy` |
+| `mgy ls` | lista as contas (da melhor para a pior, com ★) e as cotas (do cache) |
 | `mgy quota` | atualiza a cota de todas as contas e lista |
 | `mgy add` | adiciona uma conta (abre o `agy` para o login) |
 | `mgy use <n\|email> [args]` | troca de conta e abre o `agy` |
+| `mgy switch <n\|email>` | só troca de conta, sem abrir o `agy` |
+| `mgy config [chave valor]` | mostra ou muda as opções |
 | `mgy rm <email>` | esquece uma conta |
 | `mgy version` | mostra a versão |
 

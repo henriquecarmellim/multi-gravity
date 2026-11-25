@@ -41,6 +41,7 @@ const (
 	stList state = iota
 	stAddInfo
 	stRmConfirm
+	stSettings
 )
 
 type (
@@ -70,6 +71,9 @@ type model struct {
 	noteOK  bool
 	launch  string
 	sess    *core.AddSession
+	cfg     core.Config
+	best    string // melhor conta agora ("" se nenhuma tem cota)
+	setCur  int    // linha selecionada na tela de opções
 }
 
 // Run abre o TUI. Devolve a conta escolhida para abrir no agy ("" se saiu sem escolher).
@@ -96,7 +100,18 @@ func newModel(m *core.Mgr) model {
 }
 
 func (md *model) reload() {
-	md.accts = md.m.Accounts()
+	sel := md.selected()
+	md.cfg = md.m.LoadConfig()
+	md.accts = md.m.Ordered(md.cfg)
+	md.best = ""
+	if md.cfg.Strategy == "best" {
+		md.best = md.m.Best(md.cfg)
+	}
+	for i, e := range md.accts {
+		if e == sel {
+			md.cur = i
+		}
+	}
 	md.active = md.m.ActiveEmail()
 	md.quotas = map[string]core.Quota{}
 	for _, e := range md.accts {
@@ -198,6 +213,9 @@ func (md model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return md, nil
 
+	case stSettings:
+		return md.settingsKey(s)
+
 	case stRmConfirm:
 		if s == "s" || s == "y" {
 			e := md.selected()
@@ -214,7 +232,7 @@ func (md model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// enquanto o agy lê a cota da conta ativa, ele aparece como "agy aberto":
 	// só mover e sair; trocar/adicionar/remover/atualizar esperam terminar.
-	if md.loading && (s == "enter" || s == "a" || s == "x" || s == "delete" || s == "r") {
+	if md.loading && (s == "enter" || s == "a" || s == "x" || s == "delete" || s == "r" || s == "b") {
 		return md, nil
 	}
 	md.note = ""
@@ -249,6 +267,19 @@ func (md model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return md, tea.Quit
 	case "a":
 		md.st = stAddInfo
+	case "c":
+		md.st = stSettings
+	case "b":
+		if md.best == "" {
+			md.setNote("nenhuma conta com cota agora — aperte r para atualizar as cotas", false)
+			return md, nil
+		}
+		if err := md.m.SwitchTo(md.best); err != nil {
+			md.setNote(err.Error(), false)
+			return md, nil
+		}
+		md.launch = md.best
+		return md, tea.Quit
 	case "x", "delete":
 		if md.selected() != "" {
 			md.st = stRmConfirm
@@ -370,6 +401,8 @@ func (md model) View() string {
 	switch md.st {
 	case stAddInfo:
 		b.WriteString(md.addInfo())
+	case stSettings:
+		b.WriteString(md.settingsView())
 	default:
 		b.WriteString(md.table())
 	}
@@ -416,7 +449,7 @@ func (md model) table() string {
 	if emailW > 34 {
 		emailW = 34
 	}
-	full := md.w >= emailW+8+4*19+3*2
+	full := md.w >= emailW+10+4*19+3*2
 	names := [4]string{"Gemini 5h", "Gemini sem", "Claude/GPT 5h", "Claude/GPT sem"}
 	cw, sep := 19, "  "
 	if !full {
@@ -424,7 +457,7 @@ func (md model) table() string {
 		cw = 10
 	}
 	var b strings.Builder
-	b.WriteString("    " + padR("", emailW) + "  ")
+	b.WriteString("       " + padR("", emailW) + "  ")
 	for i, n := range names {
 		b.WriteString(sDim.Render(padR(n, cw)))
 		if i < 3 {
@@ -441,7 +474,14 @@ func (md model) table() string {
 		if e == md.active {
 			dot = sTitle.Render("●")
 		}
-		line := " " + cur + dot + " " + es.Render(padR(clip(e, emailW), emailW)) + "  "
+		rank := "  "
+		if md.cfg.Strategy == "best" {
+			rank = sDim.Render(fmt.Sprintf("%-2d", i+1))
+			if e == md.best {
+				rank = sTitle.Render("★ ")
+			}
+		}
+		line := " " + cur + dot + " " + rank + es.Render(padR(clip(e, emailW), emailW)) + "  "
 		q := md.quotas[e]
 		for c := 0; c < 4; c++ {
 			line += cell(q, c, full)
@@ -497,8 +537,110 @@ func (md model) footer() string {
 		parts = []string{k("↵", "abrir o agy"), k("esc", "voltar")}
 	case stRmConfirm:
 		parts = []string{k("s", "remover"), k("n", "cancelar")}
+	case stSettings:
+		parts = []string{k("↑↓", "mover"), k("←→ ↵", "mudar"), k("esc", "voltar")}
 	default:
-		parts = []string{k("↑↓", "mover"), k("↵", "trocar e abrir o agy"), k("a", "adicionar"), k("x", "remover"), k("r", "atualizar cotas"), k("q", "sair")}
+		parts = []string{k("↑↓", "mover"), k("↵", "trocar e abrir o agy"), k("b", "melhor conta"), k("a", "adicionar"), k("x", "remover"), k("r", "cotas"), k("c", "opções"), k("q", "sair")}
 	}
 	return " " + strings.Join(parts, sDim.Render("  ·  ")) + "\n"
+}
+
+// ── opções ───────────────────────────────────────────────────────────────────
+
+type setting struct {
+	label, value, hint string
+	danger             bool
+}
+
+func (md model) settings() []setting {
+	order := setting{label: "Ordenar as contas", value: "alfabética", hint: "manual: a ordem não muda com a cota"}
+	if md.cfg.Strategy == "best" {
+		order.value, order.hint = "melhor cota primeiro", "a ★ marca a conta que o mgy usa com b ou mgy auto"
+	}
+	fam := setting{label: "Cota que pesa no “melhor”", value: "Gemini", hint: "vale a menor entre as janelas de 5h e semanal"}
+	switch md.cfg.Family {
+	case "claude":
+		fam.value = "Claude + GPT"
+	case "both":
+		fam.value = "as duas (média)"
+	}
+	cont := setting{label: "Continuar a última conversa", value: "não", hint: "abre o agy sem --continue: começa uma conversa nova"}
+	if md.cfg.Continue {
+		cont.value, cont.hint = "sim", "abre o agy com --continue: o contexto segue na troca de conta"
+	}
+	perm := setting{label: "--dangerously-skip-permissions", value: "desligado", hint: "o agy pede confirmação antes de agir"}
+	if md.cfg.SkipPermissions {
+		perm.value, perm.hint, perm.danger = "LIGADO", "o agy aprova tudo sozinho, sem perguntar", true
+	}
+	return []setting{order, fam, cont, perm}
+}
+
+func cycle(list []string, cur string, d int) string {
+	for i, v := range list {
+		if v == cur {
+			return list[(i+d+len(list))%len(list)]
+		}
+	}
+	return list[0]
+}
+
+func (md model) settingsKey(s string) (tea.Model, tea.Cmd) {
+	d := 0
+	switch s {
+	case "esc", "q", "c":
+		md.st = stList
+		return md, nil
+	case "up", "k":
+		if md.setCur > 0 {
+			md.setCur--
+		}
+		return md, nil
+	case "down", "j":
+		if md.setCur < 3 {
+			md.setCur++
+		}
+		return md, nil
+	case "enter", " ", "right", "l":
+		d = 1
+	case "left", "h":
+		d = -1
+	default:
+		return md, nil
+	}
+	switch md.setCur {
+	case 0:
+		md.cfg.Strategy = cycle(core.Strategies, md.cfg.Strategy, d)
+	case 1:
+		md.cfg.Family = cycle(core.Families, md.cfg.Family, d)
+	case 2:
+		md.cfg.Continue = !md.cfg.Continue
+	case 3:
+		md.cfg.SkipPermissions = !md.cfg.SkipPermissions
+	}
+	if err := md.m.SaveConfig(md.cfg); err != nil {
+		md.setNote(err.Error(), false)
+	}
+	md.reload()
+	return md, nil
+}
+
+func (md model) settingsView() string {
+	var l []string
+	l = append(l, sBold.Render("Opções")+sDim.Render("   (salvas na hora)"), "")
+	for i, it := range md.settings() {
+		cur := "  "
+		lab := sFg
+		if i == md.setCur {
+			cur, lab = sTitle.Render("▶ "), sBold
+		}
+		val := sKey.Render(it.value)
+		if it.danger {
+			val = sErr.Render(it.value)
+		}
+		l = append(l, cur+lab.Render(padR(it.label, 32))+" "+val)
+		if i == md.setCur {
+			l = append(l, "  "+sDim.Render(it.hint))
+		}
+	}
+	return "  " + strings.ReplaceAll(sPanel.Render(strings.Join(l, "\n")), "\n", "\n  ") + "\n"
 }

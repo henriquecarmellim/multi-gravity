@@ -139,3 +139,62 @@ func fresh(m *core.Mgr) model {
 	md.loading = false
 	return md
 }
+
+func TestOpcoesPersistemEPedemCuidadoComPermissoes(t *testing.T) {
+	m := setup(t)
+	md := press(fresh(m), "c")
+	if v := md.(model).View(); !strings.Contains(v, "Opções") || !strings.Contains(v, "--dangerously-skip-permissions") || !strings.Contains(v, "desligado") {
+		t.Fatalf("tela de opções incompleta:\n%s", v)
+	}
+	// desce até a última opção e liga
+	md = press(md, "down", "down", "down", "enter")
+	if !m.LoadConfig().SkipPermissions {
+		t.Fatal("deveria ter salvo skip_permissions=true")
+	}
+	if v := md.View(); !strings.Contains(v, "LIGADO") || !strings.Contains(v, "aprova tudo sozinho") {
+		t.Errorf("deveria avisar que está ligado:\n%s", v)
+	}
+	md = press(md, "enter") // desliga de novo
+	if m.LoadConfig().SkipPermissions {
+		t.Error("deveria ter desligado")
+	}
+	// primeira opção: ordem
+	md = press(md, "up", "up", "up", "enter")
+	if m.LoadConfig().Strategy != "manual" {
+		t.Errorf("strategy = %q, queria manual", m.LoadConfig().Strategy)
+	}
+	md = press(md, "esc")
+	if md.(model).st != stList {
+		t.Error("esc deveria voltar à lista")
+	}
+}
+
+func TestMelhorContaAbreAQueTemMaisCota(t *testing.T) {
+	m := setup(t) // ativa: b@. a@ tem quota 6% semanal; dá b@ ficar melhor com 100%
+	future := "2099-01-01T00:00:00Z"
+	os.WriteFile(filepath.Join(m.Store, "quota", "b@teste.com.tsv"), []byte(
+		"Gemini Models\tWeekly Limit Remaining\t90%\t"+future+"\nGemini Models\tFive Hour Limit Remaining\t100%\t"+future+"\n"), 0o600)
+	md := fresh(m)
+	if md.best != "b@teste.com" {
+		t.Fatalf("best = %q, queria b@teste.com", md.best)
+	}
+	if md.accts[0] != "b@teste.com" {
+		t.Errorf("a melhor deveria ficar em primeiro: %v", md.accts)
+	}
+	if v := md.View(); !strings.Contains(v, "★") {
+		t.Errorf("deveria marcar a melhor com ★:\n%s", v)
+	}
+	out := press(md, "b").(model)
+	if out.launch != "b@teste.com" {
+		t.Errorf("b deveria abrir a melhor conta, launch=%q", out.launch)
+	}
+}
+
+func TestMelhorContaSemCotaAvisa(t *testing.T) {
+	m := setup(t)
+	os.Remove(filepath.Join(m.Store, "quota", "a@teste.com.tsv")) // nenhuma conta com dados
+	md := press(fresh(m), "b").(model)
+	if md.launch != "" || !strings.Contains(md.note, "nenhuma conta com cota") {
+		t.Errorf("deveria avisar e não abrir: launch=%q note=%q", md.launch, md.note)
+	}
+}
