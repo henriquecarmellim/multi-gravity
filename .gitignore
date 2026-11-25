@@ -1,0 +1,8 @@
+# binário e builds
+/multi-gravity
+/mgy
+/dist/
+# logins do agy e contas guardadas: nunca versionar
+*oauth-token*
+*.mgy.*
+accounts/
