@@ -261,3 +261,13 @@ func TestTrocaRespeitaOLock(t *testing.T) {
 		t.Error("o login não pode ter mudado")
 	}
 }
+
+func TestAgyErrorPegaAMensagemDoAgy(t *testing.T) {
+	got := agyError("ruído\nerror: Eligibility check failed: conta não elegível\nmais ruído")
+	if got != "Eligibility check failed: conta não elegível" {
+		t.Errorf("veio %q", got)
+	}
+	if agyError("só ruído\nW1125 aviso") != "" {
+		t.Error("sem 'error:' deveria ser vazio")
+	}
+}

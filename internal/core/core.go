@@ -7,6 +7,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -355,11 +356,18 @@ func (m *Mgr) LoadQuota(email string) Quota {
 func (m *Mgr) FetchQuota(email string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, m.Agy, "-p", "/quota").Output()
-	if err != nil && len(out) == 0 {
-		return fmt.Errorf("agy não respondeu: %w", err)
-	}
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, m.Agy, "-p", "/quota")
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	out := stdout.Bytes()
 	if len(ParseQuota(string(out))) == 0 {
+		if why := agyError(stdout.String() + "\n" + stderr.String()); why != "" {
+			return errors.New(why)
+		}
+		if err != nil {
+			return fmt.Errorf("agy não respondeu: %w", err)
+		}
 		return errors.New("sem dados de cota (login expirado?)")
 	}
 	if err := m.Init(); err != nil {
@@ -397,4 +405,19 @@ func (m *Mgr) RefreshActive() error {
 		return nil
 	}
 	return m.FetchQuota(m.ActiveEmail())
+}
+
+// agyError acha a mensagem de erro do agy ("error: ...") na saída, sem ruído de log.
+func agyError(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if rest, ok := strings.CutPrefix(l, "error:"); ok {
+			rest = strings.TrimSpace(rest)
+			if r := []rune(rest); len(r) > 160 {
+				rest = string(r[:159]) + "…"
+			}
+			return rest
+		}
+	}
+	return ""
 }
